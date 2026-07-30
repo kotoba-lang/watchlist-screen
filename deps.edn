@@ -1,5 +1,6 @@
 {:paths ["src"]
- :deps {kotoba-lang/aml {:local/root "../aml"}}
+ :deps {kotoba-lang/aml {:git/url "https://github.com/kotoba-lang/aml.git"
+                                     :git/sha "985bd2147a70cb564e705c578bb6d15db72f926e"}}
  :aliases
  {:test {:extra-paths ["test"]
          :extra-deps {io.github.cognitect-labs/test-runner
