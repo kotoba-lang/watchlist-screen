@@ -1,8 +1,13 @@
 ;; refresh_lists.cljs — fetch + parse + normalize + write watchlist source
 ;; data. nbb only (this repo-wide toolchain rule: no bb/babashka scripts).
 ;;
-;; Usage (from this repo's root, classpath includes src/):
-;;   nbb -cp src scripts/refresh_lists.cljs [--out DIR] [--sources ofac-sdn,un-consolidated]
+;; Usage (from this repo's root):
+;;   nbb -cp "$(clojure -Spath)" scripts/refresh_lists.cljs [--out DIR] [--sources ofac-sdn,jp-mof]
+;;
+;; The classpath comes from `clojure -Spath` rather than a bare `-cp src`
+;; because watchlist.adapters.jp-mof requires csv.core (kotoba-lang/
+;; org-ietf-csv), a git dep. `-cp src` alone resolves the repo's own
+;; namespaces and then fails on that require.
 ;;
 ;; Writes <DIR>/<source>.entities.edn (a vector of watchlist.model entity
 ;; maps) and <DIR>/<source>.manifest.edn (a watchlist.model list-manifest
@@ -19,12 +24,29 @@
   (:require ["node:crypto" :as crypto]
             ["node:fs" :as fs]
             ["node:path" :as path]
+            [clojure.string :as str]
+            [watchlist.adapters.jp-mof :as mof]
             [watchlist.adapters.ofac-sdn :as ofac]
             [watchlist.adapters.un-consolidated :as un]))
 
 (def sources
-  {:ofac-sdn {:url "https://www.treasury.gov/ofac/downloads/sdn.xml" :parse ofac/parse}
-   :un-consolidated {:url "https://scsanctions.un.org/resources/xml/en/consolidated.xml" :parse un/parse}})
+  ;; :url        — a stable URL, fetched directly.
+  ;; :index-url  + :discover — the data URL is not stable and must be read
+  ;;               off an index page first. `:discover` is a pure function of
+  ;;               that page's HTML (so it is unit-tested in the adapter, not
+  ;;               here) returning {:url :published-at}.
+  ;; :parse      — always [raw opts], even where the adapter ignores opts, so
+  ;;               this table has one shape rather than two.
+  {:ofac-sdn {:url "https://www.treasury.gov/ofac/downloads/sdn.xml"
+              :parse (fn [raw _] (ofac/parse raw))}
+   :un-consolidated {:url "https://scsanctions.un.org/resources/xml/en/consolidated.xml"
+                     :parse (fn [raw _] (un/parse raw))}
+   ;; MOF puts the publication date in the filename and keeps no stable
+   ;; alias, so a hardcoded URL goes stale without ever failing. See
+   ;; watchlist.adapters.jp-mof's module doc.
+   :jp-mof {:index-url mof/index-url
+            :discover mof/latest-csv-link
+            :parse (fn [raw opts] (mof/parse raw opts))}})
 
 (defn- sha256 [s] (-> (crypto/createHash "sha256") (.update s "utf8") (.digest "hex")))
 
@@ -35,12 +57,29 @@
                  (.text res)
                  (throw (js/Error. (str "fetch failed: " url " -> HTTP " (.-status res)))))))))
 
-(defn- write-source! [out-dir source-key parsed raw-hash fetched-at]
+(defn- resolve-url!
+  "Promise of {:url :published-at} for one source. A source with a stable
+   :url resolves immediately with no :published-at (its parser reads the
+   publication date out of the payload). A source with :discover fetches its
+   index page and REJECTS if no link is found -- a discovery that silently
+   fell back to a remembered URL would keep reporting a successful refresh
+   of a file that stopped being current."
+  [source-key {:keys [url index-url discover]}]
+  (if url
+    (js/Promise.resolve {:url url})
+    (-> (fetch-text index-url)
+        (.then (fn [html]
+                 (or (discover html)
+                     (throw (js/Error. (str (name source-key) ": no data link found on "
+                                            index-url " -- refusing to fall back to a "
+                                            "previously-known URL")))))))))
+
+(defn- write-source! [out-dir source-key parsed raw-hash fetched-at published-at]
   (let [entities-path (path/join out-dir (str (name source-key) ".entities.edn"))
         manifest-path (path/join out-dir (str (name source-key) ".manifest.edn"))
         manifest {:manifest/source source-key
                   :manifest/fetched-at fetched-at
-                  :manifest/source-published-at (:source-published-at parsed)
+                  :manifest/source-published-at (or (:source-published-at parsed) published-at)
                   :manifest/entity-count (:entity-count parsed)
                   :manifest/sha256 raw-hash}]
     (fs/mkdirSync out-dir #js {:recursive true})
@@ -53,33 +92,45 @@
     manifest))
 
 (defn refresh-one!
-  "Fetch, hash, parse, and write one source. Returns a promise of the
-   written manifest. Errors propagate (a failed fetch/parse leaves the
-   PREVIOUS entities/manifest files untouched -- never partially overwrite
-   good data with a failed refresh's half-result)."
+  "Resolve, fetch, hash, parse, and write one source. Returns a promise of
+   the written manifest. Errors propagate (a failed discovery/fetch/parse
+   leaves the PREVIOUS entities/manifest files untouched -- never partially
+   overwrite good data with a failed refresh's half-result)."
   [out-dir source-key]
-  (let [{:keys [url parse]} (get sources source-key)]
-    (when-not url (throw (ex-info (str "refresh-lists: unknown source " source-key) {:source source-key})))
-    (-> (fetch-text url)
-        (.then (fn [raw]
-                 (let [hash (sha256 raw)
-                       parsed (parse raw)
-                       fetched-at (js/Date.now)
-                       manifest (write-source! out-dir source-key parsed hash fetched-at)]
-                   (println (str (name source-key) ": " (:entity-count parsed) " entities"
-                                  ", published " (:source-published-at parsed)
-                                  ", sha256 " hash))
-                   manifest))))))
+  (let [{:keys [parse] :as spec} (get sources source-key)]
+    (when-not spec (throw (ex-info (str "refresh-lists: unknown source " source-key) {:source source-key})))
+    (-> (resolve-url! source-key spec)
+        (.then (fn [{:keys [url published-at]}]
+                 (-> (fetch-text url)
+                     (.then (fn [raw]
+                              (let [hash (sha256 raw)
+                                    parsed (parse raw {:source-published-at published-at})
+                                    fetched-at (js/Date.now)
+                                    manifest (write-source! out-dir source-key parsed hash
+                                                            fetched-at published-at)]
+                                ;; :skipped-rows is printed whenever the parser
+                                ;; reports one, including 0. "0 skipped" and a
+                                ;; parser that does not count skips must not
+                                ;; look the same in this log.
+                                (println (str (name source-key) ": " (:entity-count parsed) " entities"
+                                              (when-let [n (:row-count parsed)] (str " of " n " rows"))
+                                              (when-let [n (:skipped-rows parsed)] (str ", " n " skipped"))
+                                              ", published " (:manifest/source-published-at manifest)
+                                              ", sha256 " hash))
+                                manifest)))))))))
 
 (defn- parse-args [argv]
   (loop [args (seq argv) out {:out "resources/watchlist/lists" :sources (keys sources)}]
     (if-not args
       out
       (let [[flag value & more] args]
+        ;; `next`, not `rest`: rest returns () at the end, () is truthy in
+        ;; ClojureScript, and `(if-not args ...)` then never fires -- the loop
+        ;; spins forever on the first flag it does not consume in pairs.
         (case flag
           "--out" (recur more (assoc out :out value))
-          "--sources" (recur more (assoc out :sources (map keyword (clojure.string/split value #","))))
-          (recur (rest args) out))))))
+          "--sources" (recur more (assoc out :sources (map keyword (str/split value #","))))
+          (recur (next args) out))))))
 
 (defn -main [& argv]
   (let [{:keys [out sources]} (parse-args argv)]
@@ -90,6 +141,6 @@
                    (when (seq failures)
                      (println (str (count failures) "/" (count results) " source(s) failed -- "
                                     "previous data for those sources, if any, is untouched."))
-                     #?(:cljs (js/process.exit 1)))))))))
+                     (js/process.exit 1))))))))
 
 (apply -main *command-line-args*)

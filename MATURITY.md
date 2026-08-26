@@ -11,11 +11,29 @@ Implemented:
 - `watchlist.adapters.xml` — portable zero-dependency XML-string reader
   (same hand-rolled pattern kotoba-lang/org-omg-bpmn, org-oasis-open-xmile,
   org-omg-uml, org-sbml each already carry).
-- `watchlist.adapters.ofac-sdn` / `.un-consolidated` — real parsers, built
-  and tested against the actual live government XML files (not
+- `watchlist.adapters.ofac-sdn` / `.un-consolidated` / `.jp-mof` — real
+  parsers, built and tested against the actual live government files (not
   reconstructed from memory). `resources/watchlist/lists/` ships a real
-  snapshot: 19,169 OFAC SDN entities + 1,010 UN Consolidated entities as of
-  this repo's initial commit.
+  snapshot of all three; the committed `*.manifest.edn` files carry the
+  authoritative counts, fetch times and source hashes, so this file does not
+  restate numbers that go stale the next time anyone runs the refresh.
+- `watchlist.adapters.jp-mof` — Japan MOF 資産凍結等対象者一覧 (asset-freeze
+  designations under the 外為法), parsed from the consolidated CSV via
+  `csv.core` (kotoba-lang/org-ietf-csv, RFC 4180). Includes
+  `latest-csv-link`, a pure function over the MOF index page's HTML, because
+  MOF encodes the publication date in the filename and keeps no stable
+  alias — a hardcoded URL would keep reporting successful refreshes of one
+  frozen file. Rows are counted three ways (`:row-count`, `:entity-count`,
+  `:skipped-rows`) so a row the adapter could not read shows up as a skip
+  rather than as a quietly shorter list.
+- `watchlist.match` script folding — halfwidth katakana with its voicing
+  marks (ｶﾞ is two codepoints, ガ is one), fullwidth ASCII, hiragana →
+  katakana, and CJK ideographs kept. Plus an empty-name floor in
+  `score-name`: before it, two names the normalizer could not represent both
+  became `""` and Jaro-Winkler scored them `1.0`, i.e. `:fuzzy-high` at
+  0.92 on unrelated names. Both halves are regression-tested, and the
+  empty-floor test asserts the inputs still normalize to `""` so it cannot
+  start passing for a different reason.
 - `watchlist.adapters.edn-index` — durable file-backed
   `watchlist.ports/IWatchlistIndex` (JVM-only, `.clj` not `.cljc`, matching
   `ekyc.adapters.edn-provider`'s own precedent for the same reason).
@@ -28,9 +46,18 @@ Implemented:
   unrecognized/absent signal" rule (an absent name, a stale/absent index,
   and zero candidates are three different states, never collapsed).
 - `scripts/refresh_lists.cljs` (nbb) — real fetch/hash/parse/write, run
-  against both live sources during this repo's development (see commit
-  history / manifest `sha256`/`entity-count` fields for proof, not just a
-  claim).
+  against every live source (see commit history / manifest
+  `sha256`/`entity-count` fields for proof, not just a claim). A source
+  whose data URL is not stable declares a `:discover` step, and a discovery
+  that finds no link fails the refresh rather than falling back to a
+  remembered URL.
+- `scripts/publish_r2.cljs` (nbb) — publishes the committed snapshot to an
+  R2 bucket, content-addressed by the sha256 of each entities file, with one
+  mutable pointer per source and one index. Every put is read back and
+  hashed before the source is reported published. Run for real against the
+  `watchlist-snapshots` bucket; the read-back path was checked against a
+  missing key (`wrangler r2 object get` exits 1), so the verifier has been
+  observed refusing, not only accepting.
 - Contract tests: Jaro-Winkler reference vectors, per-source fixture
   parsing (schema-faithful fixtures with fabricated names, verified
   independently against real live data during development — see each
@@ -53,6 +80,24 @@ Not yet R1 (i.e., explicitly absent, not a rounding-down):
 - **Diacritic transliteration** — `watchlist.match/normalize` strips
   accented characters as punctuation rather than transliterating them
   (documented, tested known gap: "José" → "jos", not "jose").
+- **Kanji ↔ kana readings** — 山田 and ヤマダ are the same name and
+  `normalize` returns different strings for them. A codepoint table cannot
+  close this; it needs a reading dictionary.
+- **Scripts other than Latin and Japanese** — Hangul, Cyrillic, Arabic,
+  Greek, Thai and Devanagari still normalize to `""`. That is a false
+  negative, not a wrong answer: the empty floor in `score-name` turns an
+  unrepresentable name into "no candidate", never into a self-match. The
+  MOF list romanizes every entry (measured: 0 of 2,866 rows lack an English
+  name), so its entities stay reachable through their Latin primary name.
+- **R2 Data Catalog (Iceberg)** — not implemented. `publish_r2.cljs` writes
+  plain objects. An Iceberg table would need Parquet output (reachable:
+  `kotoba-lang/org-apache-parquet` writes Parquet) plus a client for the
+  Iceberg REST catalog protocol — namespace and table creation, snapshot
+  commits — which is separate work with its own tests.
+- **No 反社会的勢力 (organised-crime) source of any kind** — and not for
+  want of an adapter. No Japanese authority publishes such a list in
+  machine-readable form. Commercial providers exist; none is ingested here,
+  and nothing in this repo should be described as 反社チェック.
 - **Phonetic/transliteration-variant matching** (Soundex, Metaphone, or a
   Cyrillic/Arabic romanization-aware comparator) — not implemented. A name
   variant that scores below 0.80 on both Jaro-Winkler and token overlap is
@@ -62,11 +107,16 @@ Not yet R1 (i.e., explicitly absent, not a rounding-down):
   tested for correctness of its own stated logic, not validated against a
   labeled compliance dataset — none exists in this workspace, and none is
   fabricated here.
-- **No automated CI-scheduled refresh** — `scripts/refresh_lists.cljs`
-  exists and works (proven during development against live data), but
-  nothing runs it on a schedule yet. `resources/watchlist/lists/` is a
-  point-in-time snapshot that will silently age unless someone re-runs it
-  or wires a cron.
+- **No automated scheduled refresh** — `scripts/refresh_lists.cljs` and
+  `scripts/publish_r2.cljs` both exist and both have been run for real
+  against live sources, but nothing runs either on a schedule.
+  `resources/watchlist/lists/` is a point-in-time snapshot that will
+  silently age unless someone re-runs it. This is the largest operational
+  gap in the repo: the previous snapshot sat 38 days stale, and
+  `watchlist.model/default-stale-after-days` is 14 — every screen against
+  it correctly reported `:watchlist/stale? true`, and nobody was reading
+  that field. A murakumo fleet gate (this workspace does not use GitHub
+  Actions) is the follow-up.
 - **Performance** — the shared XML reader is a straightforward char-
   scanning implementation, not optimized for the ~19,000-entity OFAC file's
   ~28MB size (tens of seconds on the JVM). Acceptable for a periodic batch
