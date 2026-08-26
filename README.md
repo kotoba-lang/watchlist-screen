@@ -132,6 +132,30 @@ carries each source's `:manifest/entity-count`, `:manifest/fetched-at` and
   seconds on the JVM, longer under nbb's interpreter. Fine for a periodic
   batch refresh job; not tuned for a hot path.
 
+## Two runtimes, two suites
+
+```bash
+clojure -M:test                                  # JVM: every namespace
+nbb -cp "test:$(clojure -Spath)" test/run.cljs   # nbb: every portable one
+```
+
+Both are required before landing. Every adapter here is `.cljc` and every
+one of them executes under nbb inside `scripts/refresh_lists.cljs`, so the
+JVM suite alone tests one of the two runtimes this code runs on.
+
+That is not hypothetical. `watchlist.match` used `(int c)` to read a
+character's code unit. On the JVM that is the code unit; in ClojureScript it
+truncates a one-character *string* to `NaN` and yields `0`, so every
+codepoint comparison in the script folds compared against zero and every
+fold became a no-op — under nbb, `(normalize "ｱﾙ･ｶｰｲﾀﾞ")` silently dropped
+the voiced ﾀﾞ and `(normalize "ＡＬ－ＱＡＩＤＡ")` returned `""`. The JVM
+suite was green throughout. Reverting `watchlist.match/char-code` today
+fails 8 assertions under nbb and 0 on the JVM.
+
+`watchlist.adapters.edn-index` is `.clj` on purpose (`clojure.java.io`), so
+its test is JVM-only by design and is the one namespace `test/run.cljs` does
+not carry.
+
 ## R2 is a projection, and it is not R2 Data Catalog
 
 `scripts/publish_r2.cljs` publishes the committed snapshot to an R2 bucket:

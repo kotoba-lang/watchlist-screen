@@ -65,6 +65,16 @@ Implemented:
   `aml-port` fail-closed mapping, `edn-index` file-I/O round-trip. 38
   tests, 93 assertions, 0 failures. `clj-kondo`: 0 errors, 0 warnings.
 
+- Two-runtime test execution — `clojure -M:test` (55 tests / 147 assertions)
+  and `nbb -cp "test:$(clojure -Spath)" test/run.cljs` (52 / 141; the
+  difference is `edn-index-test`, JVM-only by design). Every adapter is
+  `.cljc` and runs under nbb in `scripts/refresh_lists.cljs`, so the JVM
+  suite alone covered one of two runtimes. The nbb runner was added after a
+  ClojureScript-only defect (`(int c)` on a one-character string is 0) made
+  the script folds no-ops under nbb while the JVM suite stayed green;
+  reverting `watchlist.match/char-code` fails 8 assertions under nbb and 0 on
+  the JVM, so the runner has been observed discriminating.
+
 Not yet R1 (i.e., explicitly absent, not a rounding-down):
 - **EU Consolidated Financial Sanctions List** — not implemented at all.
   The EU's machine-readable source requires a registered access token this

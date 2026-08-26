@@ -1,5 +1,6 @@
 (ns watchlist.adapters.jp-mof-test
-  (:require [clojure.edn :as edn]
+  (:require [watchlist.test-fixtures :as fixtures]
+            [clojure.edn :as edn]
             [clojure.string :as str]
             [clojure.test :refer [deftest is]]
             [csv.core :as csv]
@@ -10,7 +11,7 @@
 ;; MOF file (that row is schema, and drift in it is the thing this suite has
 ;; to catch) with fabricated names in every data row -- never real
 ;; designated-person data. It keeps the live file's BOM and CRLF endings.
-(def fixture (slurp "test/fixtures/jp_mof_sample.csv"))
+(def fixture (fixtures/slurp-text "test/fixtures/jp_mof_sample.csv"))
 
 (defn- entity-by-id [parsed id]
   (first (filter #(= id (:entity/id %)) (:entities parsed))))
@@ -100,8 +101,8 @@
   ;; Against the actual data this repo ships, not the fixture. An evidence
   ;; floor rather than a shape check: a snapshot that failed to write, or
   ;; wrote an empty vector, must not pass as "no problems found".
-  (let [entities (edn/read-string (slurp "resources/watchlist/lists/jp-mof.entities.edn"))
-        manifest (edn/read-string (slurp "resources/watchlist/lists/jp-mof.manifest.edn"))]
+  (let [entities (edn/read-string (fixtures/slurp-text "resources/watchlist/lists/jp-mof.entities.edn"))
+        manifest (edn/read-string (fixtures/slurp-text "resources/watchlist/lists/jp-mof.manifest.edn"))]
     (is (< 2000 (count entities)) "the MOF list has thousands of entries; a small count means a broken write")
     (is (= (count entities) (:manifest/entity-count manifest)))
     (is (= :jp-mof (:manifest/source manifest)))
