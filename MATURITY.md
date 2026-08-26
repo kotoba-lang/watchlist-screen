@@ -99,11 +99,12 @@ Not yet R1 (i.e., explicitly absent, not a rounding-down):
   unrepresentable name into "no candidate", never into a self-match. The
   MOF list romanizes every entry (measured: 0 of 2,866 rows lack an English
   name), so its entities stay reachable through their Latin primary name.
-- **R2 Data Catalog (Iceberg)** — not implemented. `publish_r2.cljs` writes
-  plain objects. An Iceberg table would need Parquet output (reachable:
-  `kotoba-lang/org-apache-parquet` writes Parquet) plus a client for the
-  Iceberg REST catalog protocol — namespace and table creation, snapshot
-  commits — which is separate work with its own tests.
+- **No scheduled export to the Iceberg tables.** The four
+  `cloud_itonami.watchlist_*` tables in `cloud-itonami-datalake` exist and
+  hold this snapshot (see README), but the superproject's exporter is run by
+  hand, so they age exactly the way `resources/watchlist/lists/` does — and
+  `watchlist_manifest.source_commit` is the column that makes that visible
+  rather than invisible.
 - **No 反社会的勢力 (organised-crime) source of any kind** — and not for
   want of an adapter. No Japanese authority publishes such a list in
   machine-readable form. Commercial providers exist; none is ingested here,

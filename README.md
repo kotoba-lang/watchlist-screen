@@ -156,7 +156,7 @@ fails 8 assertions under nbb and 0 on the JVM.
 its test is JVM-only by design and is the one namespace `test/run.cljs` does
 not carry.
 
-## R2 is a projection, and it is not R2 Data Catalog
+## Where this data lives besides git
 
 `scripts/publish_r2.cljs` publishes the committed snapshot to an R2 bucket:
 each entities file under the sha256 of its own bytes, one mutable pointer
@@ -170,14 +170,32 @@ bytes arrived.
 delete-and-rebuild test is what separates a projection from a premise
 (superproject ADR-2608039000 / ADR-2608039700), and this is a projection.
 
-**This is not R2 Data Catalog.** R2 Data Catalog is an Iceberg REST
-catalog: Parquet tables with Iceberg metadata and manifest lists, reached
-by a client that speaks that protocol. This script writes plain objects.
-Publishing these entities as an Iceberg table is reachable —
-`kotoba-lang/org-apache-parquet` can already write Parquet
-(`parquet.write/file`, `/of-columns`) — but the catalog protocol is
-separate work with its own tests, and calling an object PUT a catalog would
-misname what a caller is querying.
+**R2 Data Catalog is a different thing, and it now also holds this data.**
+The object publication above writes plain objects; R2 Data Catalog is an
+Iceberg REST catalog serving Parquet tables. Both exist:
+
+| where | what | written by |
+|---|---|---|
+| `resources/watchlist/lists/*.edn` | the source of truth | `scripts/refresh_lists.cljs` (this repo) |
+| R2 objects, content-addressed | serving copy of the same EDN | `scripts/publish_r2.cljs` (this repo) |
+| Iceberg, `cloud-itonami-datalake`, namespace `cloud_itonami` | four analytic tables | `scripts/watchlist-datalake-export.cljs` + `scripts/datalake-sync.py` (the `com-junkawasaki/root` superproject) |
+
+The Iceberg tables are `watchlist_entity` (one row per entity),
+`watchlist_name` (every primary name and alias, with `normalized_name`),
+`watchlist_attribute` (one row per nationality and per program), and
+`watchlist_manifest` (source, fetch time, count, sha256, and the commit of
+this repo the snapshot was read at). `watchlist_manifest` is a table so a
+query can answer *how old is the data behind this answer* by JOIN — the same
+thing `:watchlist/stale?` guarantees on the screening side.
+
+`normalized_name` is `watchlist.match/normalize`'s own output, computed by
+the exporter. If readers of the table reimplemented the folds, the
+datalake's answer and this library's answer would diverge the first time
+either was fixed.
+
+All three are projections of the first. Delete the bucket, the objects and
+the tables and nothing is lost: `git checkout` plus
+`scripts/refresh_lists.cljs` rebuilds every byte.
 
 See `MATURITY.md` and `90-docs/adr/*-kotoba-lang-watchlist-screen.edn` (in
 the `com-junkawasaki/root` superproject) for the full design rationale.
