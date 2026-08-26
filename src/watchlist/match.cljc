@@ -15,16 +15,117 @@
    detail to hide."
   (:require [clojure.string :as str]))
 
+;; --- script folding -------------------------------------------------------
+;; Added 2026-08-26, when :jp-mof brought the first non-Latin names into the
+;; index. Until then `normalize`'s [a-z0-9 ] filter was total by accident:
+;; every indexed name was Latin, so nothing ever asked what a Japanese name
+;; normalizes TO. It answered "" -- and that answer is not merely useless,
+;; it is unsafe. `jaro-winkler` of two empty strings is 1.0, so the moment
+;; ONE indexed name normalized to empty, EVERY query that also normalized to
+;; empty scored :fuzzy-high against it. Measured on the commit before this
+;; one: (score-name "山田太郎" "アル・カーイダ") returned
+;; {:tier :fuzzy-high :confidence 0.92} -- two unrelated names, reported as
+;; a sanctions hit. The fix is two-sided, and both halves are load-bearing:
+;; fold the scripts so real Japanese names survive normalization, AND floor
+;; `score-name` so a name that STILL cannot be represented matches nothing.
+
+(def ^:private halfwidth-katakana
+  "U+FF61-U+FF9D in codepoint order. Index i is the halfwidth form of
+   character i of `fullwidth-katakana`."
+  "｡｢｣､･ｦｧｨｩｪｫｬｭｮｯｰｱｲｳｴｵｶｷｸｹｺｻｼｽｾｿﾀﾁﾂﾃﾄﾅﾆﾇﾈﾉﾊﾋﾌﾍﾎﾏﾐﾑﾒﾓﾔﾕﾖﾗﾘﾙﾚﾛﾜﾝ")
+
+(def ^:private fullwidth-katakana
+  "。「」、・ヲァィゥェォャュョッーアイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワン")
+
+(def ^:private hw->fw (zipmap halfwidth-katakana fullwidth-katakana))
+
+(def ^:private voiceable
+  "Fullwidth katakana whose dakuten form is the NEXT codepoint (カ -> ガ)."
+  (set "カキクケコサシスセソタチツテトハヒフヘホ"))
+
+(def ^:private semi-voiceable
+  "Fullwidth katakana whose handakuten form is codepoint + 2 (ハ -> パ)."
+  (set "ハヒフヘホ"))
+
+(defn- shift-char [c n] (char (+ (int c) n)))
+
+(defn fold-halfwidth
+  "Halfwidth katakana -> fullwidth, absorbing a following U+FF9E/U+FF9F
+   voicing mark into the single fullwidth codepoint it belongs to.
+
+   A fold, not a character map: ｶﾞ is two codepoints and ガ is one. A
+   per-character map leaves the mark stranded, `normalize` then strips it,
+   and ガ has silently become カ -- a different name, with no error."
+  [s]
+  (loop [cs (seq s) out []]
+    (if-not cs
+      (apply str out)
+      (let [c (first cs)
+            fw (hw->fw c)
+            nxt (second cs)]
+        (cond
+          (nil? fw) (recur (next cs) (conj out c))
+          (and (= nxt \uff9e) (= fw \ウ)) (recur (nnext cs) (conj out \ヴ))
+          (and (= nxt \uff9e) (voiceable fw)) (recur (nnext cs) (conj out (shift-char fw 1)))
+          (and (= nxt \uff9f) (semi-voiceable fw)) (recur (nnext cs) (conj out (shift-char fw 2)))
+          :else (recur (next cs) (conj out fw)))))))
+
+(defn fold-fullwidth-ascii
+  "U+FF01-U+FF5E -> ASCII (offset 0xFEE0). Fullwidth Latin is what a
+   Japanese input method produces for ASCII, so ＡＢＣ and ABC are one name."
+  [s]
+  (apply str (map (fn [c]
+                    (let [n (int c)]
+                      (if (and (<= 0xff01 n) (<= n 0xff5e)) (char (- n 0xfee0)) c)))
+                  s)))
+
+(defn fold-hiragana
+  "Hiragana U+3041-U+3096 -> katakana (+0x60). The MOF list writes names in
+   katakana; a caller may type hiragana for the same name."
+  [s]
+  (apply str (map (fn [c]
+                    (let [n (int c)]
+                      (if (and (<= 0x3041 n) (<= n 0x3096)) (char (+ n 0x60)) c)))
+                  s)))
+
+(def ^:private drop-pattern
+  ;; Kept: ASCII letters/digits and space; katakana U+30A1-U+30FA (hiragana
+  ;; is folded into this range before we get here); the prolonged sound mark
+  ;; U+30FC; CJK ideographs U+3400-U+4DBF and U+4E00-U+9FFF.
+  ;;
+  ;; U+30FB (・) is deliberately NOT kept even though it sits inside the
+  ;; katakana block -- it separates parts of a name (アル・カーイダ), so it
+  ;; must become a space and yield two tokens, not vanish and yield one.
+  #"[^a-z0-9 \u30a1-\u30fa\u30fc\u3400-\u4dbf\u4e00-\u9fff]")
+
 (defn normalize
-  "Lowercase, strip anything outside [a-z0-9 ], collapse whitespace, trim.
-   Diacritic-stripping is NOT attempted here (portable .cljc has no
-   built-in Unicode normalizer without a dependency) -- a name with
-   diacritics that isn't ALSO listed in its plain-ASCII form on the source
-   list is a real, documented gap (README.md), not silently handled."
+  "Fold scripts, lowercase, drop every character outside the kept set,
+   collapse whitespace, trim.
+
+   Folded first, in this order: halfwidth katakana (with its voicing marks),
+   fullwidth ASCII, hiragana -> katakana.
+
+   NOT attempted. Each is a false NEGATIVE -- a name that fails to match --
+   rather than a silently wrong answer, because `score-name`'s empty floor
+   turns an unrepresentable name into 'no candidate' instead of into a
+   1.0 self-match:
+     - Latin diacritic stripping (portable .cljc has no Unicode normalizer
+       without a dependency) -- the pre-existing gap, unchanged.
+     - kanji <-> kana reading: 山田 and ヤマダ are the same name and this
+       returns different strings for them. That needs a reading dictionary,
+       not a codepoint table.
+     - Hangul, Cyrillic, Arabic, Greek, Thai, Devanagari: still normalize
+       to \"\". The MOF list romanizes every entry (measured: 0 of 2,866
+       rows lack an English name), so its entities remain reachable through
+       their Latin primary name -- but a query typed in one of those
+       scripts finds nothing and says so."
   [s]
   (-> (str s)
+      fold-halfwidth
+      fold-fullwidth-ascii
+      fold-hiragana
       (str/lower-case)
-      (str/replace #"[^a-z0-9 ]" " ")
+      (str/replace drop-pattern " ")
       (str/replace #"\s+" " ")
       str/trim))
 
@@ -111,7 +212,15 @@
         overlap (token-overlap-ratio qt ct)
         subset? (token-set-subset? qt ct)]
     (cond
-      (and (seq nq) (= nq nc))
+      ;; Empty floor. `jaro-winkler` of two empty strings is 1.0, so without
+      ;; this clause any pair of names that `normalize` cannot represent --
+      ;; two different Cyrillic names, two different Japanese names before
+      ;; the script fold above existed -- scores :fuzzy-high at 0.92. A name
+      ;; we cannot represent must match NOTHING, not everything.
+      (or (str/blank? nq) (str/blank? nc))
+      {:tier nil :confidence 0.0 :jaro-winkler 0.0 :token-overlap 0.0}
+
+      (= nq nc)
       {:tier :exact :confidence 1.0 :jaro-winkler jw :token-overlap overlap}
 
       (or (>= jw high-threshold) subset?)

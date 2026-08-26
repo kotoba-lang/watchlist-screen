@@ -3,7 +3,12 @@
    tiers — pure data + validators, no I/O, no matching logic (that's
    watchlist.match) and no screening orchestration (that's watchlist.core).")
 
-(def sources #{:ofac-sdn :un-consolidated})
+(def sources #{:ofac-sdn :un-consolidated :jp-mof})
+;; :jp-mof is Japan's MOF 資産凍結等対象者一覧 (asset-freeze targets under the
+;; 外為法). It is a SANCTIONS list, the same subject as the other two -- not a
+;; 反社会的勢力 (organised-crime) list. No Japanese authority publishes one of
+;; those in machine-readable form, and this repo must not be described as
+;; screening for one.
 ;; EU Consolidated Financial Sanctions List is NOT in `sources` — the EU's
 ;; machine-readable source (the FSD/FSF API) requires a registered access
 ;; token to fetch, a real owner action this repo cannot script around.

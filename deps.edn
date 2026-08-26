@@ -1,6 +1,14 @@
 {:paths ["src"]
  :deps {kotoba-lang/aml {:git/url "https://github.com/kotoba-lang/aml.git"
-                                     :git/sha "985bd2147a70cb564e705c578bb6d15db72f926e"}}
+                                     :git/sha "985bd2147a70cb564e705c578bb6d15db72f926e"}
+        ;; RFC 4180 CSV, portable .cljc, zero runtime deps of its own. The
+        ;; MOF source is CSV with quoted fields that contain the separator
+        ;; and, in the prose columns, newlines -- so a record is not a line
+        ;; and split-on-comma produces plausible wrong rows rather than an
+        ;; error. Not hand-rolled here: this repo's XML reader is hand-rolled
+        ;; because no such library existed when it was written; this one does.
+        kotoba-lang/org-ietf-csv {:git/url "https://github.com/kotoba-lang/org-ietf-csv.git"
+                                  :git/sha "95fc7f53674e8076beda77d8d267643f37b710c7"}}
  :aliases
  {:test {:extra-paths ["test"]
          :extra-deps {io.github.cognitect-labs/test-runner

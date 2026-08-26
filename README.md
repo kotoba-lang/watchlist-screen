@@ -2,8 +2,9 @@
 
 Sanctions/PEP watchlist screening for kotoba-lang. Ingests real, public,
 freely-licensed government sanctions data (OFAC SDN List, UN Security
-Council Consolidated List) into normalized EDN, and screens a name against
-it with a tiered, confidence-scored, staleness-aware match.
+Council Consolidated List, Japan MOF 資産凍結等対象者一覧) into normalized
+EDN, and screens a name against it with a tiered, confidence-scored,
+staleness-aware match.
 
 This is genuinely real: `resources/watchlist/lists/` in this repo ships an
 actual snapshot fetched from the live sources (not synthetic data), and
@@ -11,6 +12,12 @@ actual snapshot fetched from the live sources (not synthetic data), and
 tracking, and `aml.ports/IAmlScreening` integration are all real, tested
 code — but read "Honesty boundary" below before relying on this for
 anything with real compliance weight.
+
+**This is not a 反社 (organised-crime / anti-social forces) database.** No
+Japanese authority publishes such a list in machine-readable form, and none
+is reconstructed here. Every source below is an economic-sanctions /
+asset-freeze list. If you came looking for 反社チェック, this answers a
+different question, and saying so is the point.
 
 ## Usage
 
@@ -30,18 +37,43 @@ anything with real compliance weight.
 Refreshing the data:
 
 ```bash
-nbb -cp src scripts/refresh_lists.cljs --out resources/watchlist/lists
+# The classpath comes from `clojure -Spath`, not `-cp src`: the MOF adapter
+# requires csv.core (kotoba-lang/org-ietf-csv), a git dep.
+nbb -cp "$(clojure -Spath)" scripts/refresh_lists.cljs --out resources/watchlist/lists
+nbb -cp "$(clojure -Spath)" scripts/refresh_lists.cljs --sources jp-mof   # one source
+```
+
+Publishing the snapshot to R2 (a serving copy — see "R2 is a projection"
+below):
+
+```bash
+nbb -cp "$(clojure -Spath)" scripts/publish_r2.cljs --bucket watchlist-snapshots
+nbb -cp "$(clojure -Spath)" scripts/publish_r2.cljs --dry-run
 ```
 
 ## Sources
 
+Counts below are the committed snapshot's, and the committed manifests are
+authoritative over this prose — `resources/watchlist/lists/*.manifest.edn`
+carries each source's `:manifest/entity-count`, `:manifest/fetched-at` and
+`:manifest/sha256`.
+
 - **OFAC SDN List** — `https://www.treasury.gov/ofac/downloads/sdn.xml`,
-  freely downloadable, no authentication. ~19,000 entities as of this
-  repo's initial snapshot.
+  freely downloadable, no authentication.
 - **UN Security Council Consolidated List** —
   `https://scsanctions.un.org/resources/xml/en/consolidated.xml`, freely
-  downloadable, no authentication. ~1,000 entities as of this repo's
-  initial snapshot.
+  downloadable, no authentication.
+- **Japan MOF 資産凍結等対象者一覧** — the consolidated CSV linked from
+  `https://www.mof.go.jp/policy/international_policy/gaitame_kawase/gaitame/economic_sanctions/list.html`,
+  freely downloadable, no authentication. Asset-freeze targets designated
+  under the 外為法 (Foreign Exchange and Foreign Trade Act). UTF-8 with a
+  BOM, 32 columns, both Japanese and romanized names per row.
+
+  **The URL moves.** MOF puts the publication date in the filename
+  (`shisantouketsu<YYYYMMDD>.csv`) and keeps no stable alias, so
+  `watchlist.adapters.jp-mof/latest-csv-link` reads the index page and finds
+  the current one. A hardcoded URL would not merely 404 — it would keep
+  serving one frozen snapshot while every refresh reported success.
 - **EU Consolidated Financial Sanctions List** — **not implemented**. The
   EU's machine-readable source (the FSD/FSF API) requires a registered
   access token; every unauthenticated fetch attempt during this repo's
@@ -51,9 +83,9 @@ nbb -cp src scripts/refresh_lists.cljs --out resources/watchlist/lists
 
 ## Honesty boundary (read before relying on this for anything real)
 
-- **Data ingestion**: real. Both parsers were built and tested against the
-  actual live XML files, not reconstructed from memory or a stale spec —
-  every namespace's doc comment says so and names the exact URL.
+- **Data ingestion**: real. Every parser was built and tested against the
+  actual live file, not reconstructed from memory or a stale spec — each
+  namespace's doc comment says so and names the exact URL.
 - **Name matching**: real, deterministic, tested (including Jaro-Winkler
   verified against Winkler's own published reference vectors) — but a
   known, documented false-negative risk: anything scoring below 0.80 on
@@ -62,6 +94,22 @@ nbb -cp src scripts/refresh_lists.cljs --out resources/watchlist/lists
   This is narrower coverage than a commercial compliance vendor
   (ComplyAdvantage, Refinitiv World-Check, Dow Jones) that tunes match
   quality as an ongoing operational job.
+- **Japanese matching**: `watchlist.match/normalize` folds halfwidth
+  katakana (with its voicing marks), fullwidth ASCII, and hiragana into
+  katakana, and keeps CJK ideographs. So ｱﾙ･ｶｰｲﾀﾞ, アル・カーイダ and
+  ＡＬ－ＱＡＩＤＡ all reach the same entity. It does **not** know readings:
+  山田 and ヤマダ are the same name and this returns different strings for
+  them — that needs a dictionary, not a codepoint table.
+- **A defect this change fixed, recorded because the shape recurs.** Before
+  the script fold existed, every non-Latin name normalized to `""`, and
+  Jaro-Winkler of two empty strings is `1.0` — so any two names the
+  normalizer could not represent scored `:fuzzy-high` at `0.92`. Measured:
+  `(score-name "山田太郎" "アル・カーイダ")` returned a 0.92-confidence hit
+  on two unrelated names. It was latent only because no indexed name was
+  non-Latin yet; adding the MOF list would have activated it on 2,866
+  entries. `score-name` now floors an unrepresentable name to "no
+  candidate", and the regression test pins that it is still exercising the
+  empty path rather than passing because two strings happen to differ.
 - **Staleness**: every screening result carries `:watchlist/stale?` and
   `:watchlist/list-age-days` — a caller cannot mistake a result checked
   against 6-month-old data for one checked against current data, and an
@@ -83,6 +131,29 @@ nbb -cp src scripts/refresh_lists.cljs --out resources/watchlist/lists
   parsing the full ~19,000-entity OFAC file takes on the order of tens of
   seconds on the JVM, longer under nbb's interpreter. Fine for a periodic
   batch refresh job; not tuned for a hot path.
+
+## R2 is a projection, and it is not R2 Data Catalog
+
+`scripts/publish_r2.cljs` publishes the committed snapshot to an R2 bucket:
+each entities file under the sha256 of its own bytes, one mutable pointer
+per source (`watchlist/<source>/latest.edn`), and one
+`watchlist/index.edn`. Every put is read back and hashed before the source
+is reported as published — a PUT that exited 0 is not evidence that the
+bytes arrived.
+
+**Git remains the source of truth.** Delete the bucket and nothing is lost:
+`git checkout` plus `scripts/refresh_lists.cljs` rebuilds every byte. That
+delete-and-rebuild test is what separates a projection from a premise
+(superproject ADR-2608039000 / ADR-2608039700), and this is a projection.
+
+**This is not R2 Data Catalog.** R2 Data Catalog is an Iceberg REST
+catalog: Parquet tables with Iceberg metadata and manifest lists, reached
+by a client that speaks that protocol. This script writes plain objects.
+Publishing these entities as an Iceberg table is reachable —
+`kotoba-lang/org-apache-parquet` can already write Parquet
+(`parquet.write/file`, `/of-columns`) — but the catalog protocol is
+separate work with its own tests, and calling an object PUT a catalog would
+misname what a caller is querying.
 
 See `MATURITY.md` and `90-docs/adr/*-kotoba-lang-watchlist-screen.edn` (in
 the `com-junkawasaki/root` superproject) for the full design rationale.
