@@ -1,12 +1,13 @@
 (ns watchlist.adapters.ofac-sdn-test
-  (:require [clojure.test :refer [deftest is]]
+  (:require [watchlist.test-fixtures :as fixtures]
+            [clojure.test :refer [deftest is]]
             [watchlist.adapters.ofac-sdn :as ofac]
             [watchlist.model :as model]))
 
 ;; test/fixtures/ofac_sdn_sample.xml is schema-faithful (verified against the
 ;; real live sdn.xml fetched from treasury.gov during development) but every
 ;; name in it is fabricated -- never real designated-person data.
-(def fixture-xml (slurp "test/fixtures/ofac_sdn_sample.xml"))
+(def fixture-xml (fixtures/slurp-text "test/fixtures/ofac_sdn_sample.xml"))
 
 (deftest parse-fixture-yields-three-valid-entities
   (let [result (ofac/parse fixture-xml)]

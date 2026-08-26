@@ -47,7 +47,24 @@
   "Fullwidth katakana whose handakuten form is codepoint + 2 (ハ -> パ)."
   (set "ハヒフヘホ"))
 
-(defn- shift-char [c n] (char (+ (int c) n)))
+(defn- char-code
+  "The UTF-16 code unit of a one-character value, on both runtimes.
+
+   NOT `(int c)`. ClojureScript's `int` truncates to a number first, and a
+   one-character STRING truncated is NaN, so `(int \"ｶ\")` is 0 -- every
+   codepoint comparison below silently tests against zero and every fold
+   below becomes a no-op. Measured before this fix: under nbb,
+   (normalize \"ｱﾙ･ｶｰｲﾀﾞ\") dropped the voiced ﾀﾞ and
+   (normalize \"ＡＬ－ＱＡＩＤＡ\") returned \"\", while the JVM returned the
+   right answer for both -- so the tests were green and the nbb scripts that
+   consume this namespace were wrong. A .cljc file tested on one runtime is
+   tested on one runtime; test/watchlist/cljs_runner.cljs exists because of
+   this."
+  [c]
+  #?(:clj (int c)
+     :cljs (.charCodeAt (str c) 0)))
+
+(defn- shift-char [c n] (char (+ (char-code c) n)))
 
 (defn fold-halfwidth
   "Halfwidth katakana -> fullwidth, absorbing a following U+FF9E/U+FF9F
@@ -75,7 +92,7 @@
    Japanese input method produces for ASCII, so ＡＢＣ and ABC are one name."
   [s]
   (apply str (map (fn [c]
-                    (let [n (int c)]
+                    (let [n (char-code c)]
                       (if (and (<= 0xff01 n) (<= n 0xff5e)) (char (- n 0xfee0)) c)))
                   s)))
 
@@ -84,7 +101,7 @@
    katakana; a caller may type hiragana for the same name."
   [s]
   (apply str (map (fn [c]
-                    (let [n (int c)]
+                    (let [n (char-code c)]
                       (if (and (<= 0x3041 n) (<= n 0x3096)) (char (+ n 0x60)) c)))
                   s)))
 

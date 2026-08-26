@@ -1,12 +1,13 @@
 (ns watchlist.adapters.un-consolidated-test
-  (:require [clojure.test :refer [deftest is]]
+  (:require [watchlist.test-fixtures :as fixtures]
+            [clojure.test :refer [deftest is]]
             [watchlist.adapters.un-consolidated :as un]
             [watchlist.model :as model]))
 
 ;; test/fixtures/un_consolidated_sample.xml is schema-faithful (verified
 ;; against the real live consolidated.xml fetched from scsanctions.un.org
 ;; during development) but every name in it is fabricated.
-(def fixture-xml (slurp "test/fixtures/un_consolidated_sample.xml"))
+(def fixture-xml (fixtures/slurp-text "test/fixtures/un_consolidated_sample.xml"))
 
 (deftest parse-fixture-yields-three-valid-entities-individuals-then-entities
   (let [result (un/parse fixture-xml)]
