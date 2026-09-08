@@ -42,7 +42,7 @@
             ["node:os" :as os]
             ["node:path" :as path]
             [clojure.edn :as edn]
-            [clojure.string :as str]))
+            [kotoba.lang.text :as str]))
 
 (defn- die [msg] (println "ERROR:" msg) (js/process.exit 1))
 

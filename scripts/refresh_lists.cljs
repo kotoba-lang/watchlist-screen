@@ -24,7 +24,7 @@
   (:require ["node:crypto" :as crypto]
             ["node:fs" :as fs]
             ["node:path" :as path]
-            [clojure.string :as str]
+            [kotoba.lang.text :as str]
             [watchlist.adapters.jp-mof :as mof]
             [watchlist.adapters.ofac-sdn :as ofac]
             [watchlist.adapters.un-consolidated :as un]))
