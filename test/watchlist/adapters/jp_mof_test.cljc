@@ -1,7 +1,7 @@
 (ns watchlist.adapters.jp-mof-test
   (:require [watchlist.test-fixtures :as fixtures]
             [clojure.edn :as edn]
-            [clojure.string :as str]
+            [kotoba.lang.text :as str]
             [clojure.test :refer [deftest is]]
             [csv.core :as csv]
             [watchlist.adapters.jp-mof :as mof]

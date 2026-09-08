@@ -1,5 +1,10 @@
 {:paths ["src"]
- :deps {kotoba-lang/aml {:git/url "https://github.com/kotoba-lang/aml.git"
+ :deps {
+        ;; kotoba.lang.text, not clojure.string. Pinned as an explicit floor:
+        ;; tools.deps takes the NEWEST sha it is shown, so without a floor here
+        ;; this repo silently rides whatever a sibling happens to name.
+        io.github.kotoba-lang/text {:git/sha "73bdb13ae7a3d004b44bca08be03a3191157a38f"}
+       kotoba-lang/aml {:git/url "https://github.com/kotoba-lang/aml.git"
                                      :git/sha "985bd2147a70cb564e705c578bb6d15db72f926e"}
         ;; RFC 4180 CSV, portable .cljc, zero runtime deps of its own. The
         ;; MOF source is CSV with quoted fields that contain the separator

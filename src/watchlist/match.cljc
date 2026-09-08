@@ -13,7 +13,7 @@
    below `low-threshold` is NOT surfaced as a candidate at all. Treat that
    as a documented false-negative risk (README.md), not an implementation
    detail to hide."
-  (:require [clojure.string :as str]))
+  (:require [kotoba.lang.text :as str]))
 
 ;; --- script folding -------------------------------------------------------
 ;; Added 2026-08-26, when :jp-mof brought the first non-Latin names into the
@@ -141,7 +141,7 @@
       fold-halfwidth
       fold-fullwidth-ascii
       fold-hiragana
-      (str/lower-case)
+      (str/lower)
       (str/replace drop-pattern " ")
       (str/replace #"\s+" " ")
       str/trim))

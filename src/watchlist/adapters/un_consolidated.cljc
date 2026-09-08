@@ -11,7 +11,7 @@
    entities carry the whole org name in FIRST_NAME alone (confirmed from the
    live file, not a guess — an odd schema choice on the UN's part, not
    this repo's)."
-  (:require [clojure.string :as str]
+  (:require [kotoba.lang.text :as str]
             [watchlist.adapters.xml :as xml]
             [watchlist.model :as model]))
 
