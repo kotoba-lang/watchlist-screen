@@ -24,7 +24,7 @@
    snapshot forever while every refresh reports success. `latest-csv-link`
    reads the index page and finds the newest one; it is pure so it can be
    tested, and the fetching stays in scripts/refresh_lists.cljs."
-  (:require [clojure.string :as str]
+  (:require [kotoba.lang.text :as str]
             [csv.core :as csv]
             [watchlist.model :as model]))
 

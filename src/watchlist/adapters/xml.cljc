@@ -12,7 +12,7 @@
    utility is small enough that duplicating it per-consumer beats a shared
    dependency — see kotoba-lang/composer's ADR-2607031510 on avoiding
    speculative generality)."
-  (:require [clojure.string :as str]))
+  (:require [kotoba.lang.text :as str]))
 
 (defn- decode [s]
   (-> s
