@@ -65,8 +65,8 @@ Implemented:
   `aml-port` fail-closed mapping, `edn-index` file-I/O round-trip. 38
   tests, 93 assertions, 0 failures. `clj-kondo`: 0 errors, 0 warnings.
 
-- Two-runtime test execution — `clojure -M:test` (55 tests / 147 assertions)
-  and `nbb -cp "test:$(clojure -Spath)" test/run.cljk` (52 / 141; the
+- Two-runtime test execution — `kbb -M:test` (55 tests / 147 assertions)
+  and `kbb --backend sci -cp "test:$(kbb -Spath)" test/run.cljk` (52 / 141; the
   difference is `edn-index-test`, JVM-only by design). Every adapter is
   `.cljc` and runs under nbb in `scripts/refresh_lists.cljk`, so the JVM
   suite alone covered one of two runtimes. The nbb runner was added after a

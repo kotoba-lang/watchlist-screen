@@ -3,7 +3,7 @@
 ;; .mjs).
 ;;
 ;; Usage (from this repo's root):
-;;   nbb -cp "$(clojure -Spath)" scripts/publish_r2.cljk --bucket <name> [--dir DIR] [--prefix P] [--dry-run]
+;;   kbb --backend sci -cp "$(kbb -Spath)" scripts/publish_r2.cljk --bucket <name> [--dir DIR] [--prefix P] [--dry-run]
 ;;
 ;; WHAT THIS IS, AND WHAT IT IS NOT.
 ;;

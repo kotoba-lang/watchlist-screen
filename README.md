@@ -37,18 +37,18 @@ different question, and saying so is the point.
 Refreshing the data:
 
 ```bash
-# The classpath comes from `clojure -Spath`, not `-cp src`: the MOF adapter
+# The classpath comes from `kbb -Spath`, not `-cp src`: the MOF adapter
 # requires csv.core (kotoba-lang/org-ietf-csv), a git dep.
-nbb -cp "$(clojure -Spath)" scripts/refresh_lists.cljk --out resources/watchlist/lists
-nbb -cp "$(clojure -Spath)" scripts/refresh_lists.cljk --sources jp-mof   # one source
+kbb --backend sci -cp "$(kbb -Spath)" scripts/refresh_lists.cljk --out resources/watchlist/lists
+kbb --backend sci -cp "$(kbb -Spath)" scripts/refresh_lists.cljk --sources jp-mof   # one source
 ```
 
 Publishing the snapshot to R2 (a serving copy — see "R2 is a projection"
 below):
 
 ```bash
-nbb -cp "$(clojure -Spath)" scripts/publish_r2.cljk --bucket watchlist-snapshots
-nbb -cp "$(clojure -Spath)" scripts/publish_r2.cljk --dry-run
+kbb --backend sci -cp "$(kbb -Spath)" scripts/publish_r2.cljk --bucket watchlist-snapshots
+kbb --backend sci -cp "$(kbb -Spath)" scripts/publish_r2.cljk --dry-run
 ```
 
 ## Sources
@@ -135,8 +135,8 @@ carries each source's `:manifest/entity-count`, `:manifest/fetched-at` and
 ## Two runtimes, two suites
 
 ```bash
-clojure -M:test                                  # JVM: every namespace
-nbb -cp "test:$(clojure -Spath)" test/run.cljk   # nbb: every portable one
+kbb -M:test                                  # JVM: every namespace
+kbb --backend sci -cp "test:$(kbb -Spath)" test/run.cljk   # nbb: every portable one
 ```
 
 Both are required before landing. Every adapter here is `.cljc` and every

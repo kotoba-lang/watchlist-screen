@@ -1,6 +1,6 @@
 ;; run.cljs — the ClojureScript half of this repo's suite, under nbb.
 ;;
-;;   nbb -cp "test:$(clojure -Spath)" test/run.cljk
+;;   kbb --backend sci -cp "test:$(kbb -Spath)" test/run.cljk
 ;;
 ;; `test` FIRST, not appended. Measured 2026-08-26: with `test` at the end of
 ;; the classpath nbb reports "Could not find namespace: watchlist.match-test"
