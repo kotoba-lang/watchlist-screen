@@ -8,7 +8,7 @@ staleness-aware match.
 
 This is genuinely real: `resources/watchlist/lists/` in this repo ships an
 actual snapshot fetched from the live sources (not synthetic data), and
-`scripts/refresh_lists.cljs` re-fetches it. The match algorithm, staleness
+`scripts/refresh_lists.cljk` re-fetches it. The match algorithm, staleness
 tracking, and `aml.ports/IAmlScreening` integration are all real, tested
 code — but read "Honesty boundary" below before relying on this for
 anything with real compliance weight.
@@ -39,16 +39,16 @@ Refreshing the data:
 ```bash
 # The classpath comes from `clojure -Spath`, not `-cp src`: the MOF adapter
 # requires csv.core (kotoba-lang/org-ietf-csv), a git dep.
-nbb -cp "$(clojure -Spath)" scripts/refresh_lists.cljs --out resources/watchlist/lists
-nbb -cp "$(clojure -Spath)" scripts/refresh_lists.cljs --sources jp-mof   # one source
+nbb -cp "$(clojure -Spath)" scripts/refresh_lists.cljk --out resources/watchlist/lists
+nbb -cp "$(clojure -Spath)" scripts/refresh_lists.cljk --sources jp-mof   # one source
 ```
 
 Publishing the snapshot to R2 (a serving copy — see "R2 is a projection"
 below):
 
 ```bash
-nbb -cp "$(clojure -Spath)" scripts/publish_r2.cljs --bucket watchlist-snapshots
-nbb -cp "$(clojure -Spath)" scripts/publish_r2.cljs --dry-run
+nbb -cp "$(clojure -Spath)" scripts/publish_r2.cljk --bucket watchlist-snapshots
+nbb -cp "$(clojure -Spath)" scripts/publish_r2.cljk --dry-run
 ```
 
 ## Sources
@@ -78,7 +78,7 @@ carries each source's `:manifest/entity-count`, `:manifest/fetched-at` and
   EU's machine-readable source (the FSD/FSF API) requires a registered
   access token; every unauthenticated fetch attempt during this repo's
   development returned HTTP 500. See
-  `src/watchlist/adapters/eu_consolidated.cljc`'s module doc. Provisioning
+  `src/watchlist/adapters/eu_consolidated.cljk`'s module doc. Provisioning
   a token is an owner action, not something this repo scripts around.
 
 ## Honesty boundary (read before relying on this for anything real)
@@ -136,11 +136,11 @@ carries each source's `:manifest/entity-count`, `:manifest/fetched-at` and
 
 ```bash
 clojure -M:test                                  # JVM: every namespace
-nbb -cp "test:$(clojure -Spath)" test/run.cljs   # nbb: every portable one
+nbb -cp "test:$(clojure -Spath)" test/run.cljk   # nbb: every portable one
 ```
 
 Both are required before landing. Every adapter here is `.cljc` and every
-one of them executes under nbb inside `scripts/refresh_lists.cljs`, so the
+one of them executes under nbb inside `scripts/refresh_lists.cljk`, so the
 JVM suite alone tests one of the two runtimes this code runs on.
 
 That is not hypothetical. `watchlist.match` used `(int c)` to read a
@@ -153,12 +153,12 @@ suite was green throughout. Reverting `watchlist.match/char-code` today
 fails 8 assertions under nbb and 0 on the JVM.
 
 `watchlist.adapters.edn-index` is `.clj` on purpose (`clojure.java.io`), so
-its test is JVM-only by design and is the one namespace `test/run.cljs` does
+its test is JVM-only by design and is the one namespace `test/run.cljk` does
 not carry.
 
 ## Where this data lives besides git
 
-`scripts/publish_r2.cljs` publishes the committed snapshot to an R2 bucket:
+`scripts/publish_r2.cljk` publishes the committed snapshot to an R2 bucket:
 each entities file under the sha256 of its own bytes, one mutable pointer
 per source (`watchlist/<source>/latest.edn`), and one
 `watchlist/index.edn`. Every put is read back and hashed before the source
@@ -166,7 +166,7 @@ is reported as published — a PUT that exited 0 is not evidence that the
 bytes arrived.
 
 **Git remains the source of truth.** Delete the bucket and nothing is lost:
-`git checkout` plus `scripts/refresh_lists.cljs` rebuilds every byte. That
+`git checkout` plus `scripts/refresh_lists.cljk` rebuilds every byte. That
 delete-and-rebuild test is what separates a projection from a premise
 (superproject ADR-2608039000 / ADR-2608039700), and this is a projection.
 
@@ -176,8 +176,8 @@ Iceberg REST catalog serving Parquet tables. Both exist:
 
 | where | what | written by |
 |---|---|---|
-| `resources/watchlist/lists/*.edn` | the source of truth | `scripts/refresh_lists.cljs` (this repo) |
-| R2 objects, content-addressed | serving copy of the same EDN | `scripts/publish_r2.cljs` (this repo) |
+| `resources/watchlist/lists/*.edn` | the source of truth | `scripts/refresh_lists.cljk` (this repo) |
+| R2 objects, content-addressed | serving copy of the same EDN | `scripts/publish_r2.cljk` (this repo) |
 | Iceberg, `cloud-itonami-datalake`, namespace `cloud_itonami` | four analytic tables | `scripts/watchlist-datalake-export.cljs` + `scripts/datalake-sync.py` (the `com-junkawasaki/root` superproject) |
 
 The Iceberg tables are `watchlist_entity` (one row per entity),
@@ -195,7 +195,7 @@ either was fixed.
 
 All three are projections of the first. Delete the bucket, the objects and
 the tables and nothing is lost: `git checkout` plus
-`scripts/refresh_lists.cljs` rebuilds every byte.
+`scripts/refresh_lists.cljk` rebuilds every byte.
 
 See `MATURITY.md` and `90-docs/adr/*-kotoba-lang-watchlist-screen.edn` (in
 the `com-junkawasaki/root` superproject) for the full design rationale.
