@@ -2,7 +2,7 @@
   "Durable, file-backed IWatchlistIndex -- reads
    <dir>/<source-name>.entities.edn (a vector of watchlist.model entity
    maps) and <dir>/<source-name>.manifest.edn (a watchlist.model list
-   manifest map) per source, written by scripts/refresh_lists.cljs.
+   manifest map) per source, written by scripts/refresh_lists.cljk.
 
    .clj, not .cljc -- like ekyc.adapters.edn-provider (the sibling repo this
    one is designed to sit behind), this is JVM-only file I/O

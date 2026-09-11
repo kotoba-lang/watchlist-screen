@@ -45,13 +45,13 @@ Implemented:
   `aml.adapters.etzhayyim`'s own documented "never :clear on an
   unrecognized/absent signal" rule (an absent name, a stale/absent index,
   and zero candidates are three different states, never collapsed).
-- `scripts/refresh_lists.cljs` (nbb) — real fetch/hash/parse/write, run
+- `scripts/refresh_lists.cljk` (nbb) — real fetch/hash/parse/write, run
   against every live source (see commit history / manifest
   `sha256`/`entity-count` fields for proof, not just a claim). A source
   whose data URL is not stable declares a `:discover` step, and a discovery
   that finds no link fails the refresh rather than falling back to a
   remembered URL.
-- `scripts/publish_r2.cljs` (nbb) — publishes the committed snapshot to an
+- `scripts/publish_r2.cljk` (nbb) — publishes the committed snapshot to an
   R2 bucket, content-addressed by the sha256 of each entities file, with one
   mutable pointer per source and one index. Every put is read back and
   hashed before the source is reported published. Run for real against the
@@ -66,9 +66,9 @@ Implemented:
   tests, 93 assertions, 0 failures. `clj-kondo`: 0 errors, 0 warnings.
 
 - Two-runtime test execution — `clojure -M:test` (55 tests / 147 assertions)
-  and `nbb -cp "test:$(clojure -Spath)" test/run.cljs` (52 / 141; the
+  and `nbb -cp "test:$(clojure -Spath)" test/run.cljk` (52 / 141; the
   difference is `edn-index-test`, JVM-only by design). Every adapter is
-  `.cljc` and runs under nbb in `scripts/refresh_lists.cljs`, so the JVM
+  `.cljc` and runs under nbb in `scripts/refresh_lists.cljk`, so the JVM
   suite alone covered one of two runtimes. The nbb runner was added after a
   ClojureScript-only defect (`(int c)` on a one-character string is 0) made
   the script folds no-ops under nbb while the JVM suite stayed green;
@@ -118,8 +118,8 @@ Not yet R1 (i.e., explicitly absent, not a rounding-down):
   tested for correctness of its own stated logic, not validated against a
   labeled compliance dataset — none exists in this workspace, and none is
   fabricated here.
-- **No automated scheduled refresh** — `scripts/refresh_lists.cljs` and
-  `scripts/publish_r2.cljs` both exist and both have been run for real
+- **No automated scheduled refresh** — `scripts/refresh_lists.cljk` and
+  `scripts/publish_r2.cljk` both exist and both have been run for real
   against live sources, but nothing runs either on a schedule.
   `resources/watchlist/lists/` is a point-in-time snapshot that will
   silently age unless someone re-runs it. This is the largest operational

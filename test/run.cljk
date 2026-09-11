@@ -1,6 +1,6 @@
 ;; run.cljs — the ClojureScript half of this repo's suite, under nbb.
 ;;
-;;   nbb -cp "test:$(clojure -Spath)" test/run.cljs
+;;   nbb -cp "test:$(clojure -Spath)" test/run.cljk
 ;;
 ;; `test` FIRST, not appended. Measured 2026-08-26: with `test` at the end of
 ;; the classpath nbb reports "Could not find namespace: watchlist.match-test"
@@ -11,7 +11,7 @@
 ;; reads like a missing file rather than like a classpath problem.
 ;;
 ;; WHY THIS EXISTS. Every namespace it covers is .cljc and every one of them
-;; is executed under nbb in production by scripts/refresh_lists.cljs. Running
+;; is executed under nbb in production by scripts/refresh_lists.cljk. Running
 ;; them only on the JVM tested one of the two runtimes they run on, and that
 ;; is not hypothetical: a `(int c)` in watchlist.match returns the code unit
 ;; on the JVM and 0 in ClojureScript, so the script folds were no-ops under
